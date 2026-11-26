@@ -353,6 +353,14 @@ pre,.scroll{overflow-x:auto}
 #gm h2{margin:0 0 6px}#gm .gmsteps{padding-left:0;list-style:none;display:grid;gap:12px;margin:14px 0}
 #gm textarea{width:100%;margin-top:6px;font:inherit;font-size:13px;padding:8px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit}
 #gm .row{display:flex;flex-wrap:wrap;gap:8px}
+
+.adminp{border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:0 0 20px}.adminp h2{margin:0 0 8px;font-size:18px}
+.adminp .arow{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}.adminp .arow.col{display:block}
+.adminp p{margin:4px 0 0;max-width:62ch}.alist{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:8px}.alist li{display:flex;align-items:center;gap:10px}.alist li span{flex:1}.alist em{font-style:normal;font-size:13px;color:var(--muted)}
+.btn.sm{min-height:34px;padding:0 12px;font-size:13.5px}
+.sw{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:4px 12px 4px 4px;background:transparent;color:var(--ink);font:inherit;font-weight:600;cursor:pointer;min-height:36px}
+.sw span{width:38px;height:22px;border-radius:999px;background:#c9cfdc;position:relative;transition:background .2s}.sw span::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
+.sw.on span{background:var(--ok)}.sw.on span::after{transform:translateX(16px)}
 </style><script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script></head>
 <body>
 <div class="shell">
@@ -428,7 +436,7 @@ const MS=[
  {id:'streak14',name:'Unstoppable',desc:'Reach a 14-day streak.',goal:14,val:s=>s.bestStreak,icon:'star',reward:['color','midnight']}];
 const rewardLabel=r=>r[0]==='icon'?(r[1]==='check3'?'Checklist':r[1][0].toUpperCase()+r[1].slice(1))+' icon':r[0]==='color'?({gold:'Gold',midnight:'Midnight',sunset:'Sunset'}[r[1]]||r[1])+' colour':FRAMES[r[1]]+' frame';
 
-const S={pend:{},db:null,user:null,uid:null,sample:null,ai:'checking',canWrite:true,drills:{},days:{},subs:{},members:{},loaded:false,cur:null,draft:null,touched:false,grading:null,armed:false,
+const S={pend:{},cfg:{dailyGen:true},adm:{owner:'',admins:[]},db:null,user:null,uid:null,sample:null,ai:'checking',canWrite:true,drills:{},days:{},subs:{},members:{},loaded:false,cur:null,draft:null,touched:false,grading:null,armed:false,
  tab:'r',wall:null,lb:-1,decks:{},csubs:{},localCS:{},cIdx:{},cAuto:false,flipped:{},justFlipped:'',stage:{},prac:{},fits:{},fsubs:{},localFS:{},fIdx:{},fAuto:false,fgen:{busy:false,err:'',other:false},fbusy:false,ferr:'',world:null,cgen:{busy:false,err:'',other:false},showRev:false,
  cal:{y:new Date().getFullYear(),m:new Date().getMonth()},gen:{busy:false,auto:false,prompt:'',industry:'',module:'',depth:'std',err:'',status:'',ctl:null},joinErr:'',prefill:{name:'',email:''},lock:null,autoTried:false,cache:new Map()};
 const app=$('#app'),note=$('#note');
@@ -581,7 +589,7 @@ function answerCard(date,i,j,st){const cards=deckOf(date);if(!cards||!cards[i])r
  if(prac)S.prac[date]=s;else{s.at=new Date().toISOString();S.localCS[date]=s;S.csubs[csKey(date,S.uid)]=s;S.cache.clear();const snap=clone(s);if(S.db&&S.uid)csSave=csSave.then(()=>S.db.doc('cardsubs/'+csKey(date,S.uid)).set(snap)).catch(()=>{})}
  app.innerHTML=viewCards(date)}
 function flagCard(date,i){const s=myCS(date);if(!s)return;const n=clone(s);n.flags=Array.from(new Set([...(n.flags||[]),i]));S.localCS[date]=n;S.csubs[csKey(date,S.uid)]=n;if(S.db&&S.uid)csSave=csSave.then(()=>S.db.doc('cardsubs/'+csKey(date,S.uid)).set(n)).catch(()=>{});app.innerHTML=viewCards(date)}
-async function autoCards(){if(S.cAuto||!S.loaded||!S.sample||!S.db||!S.uid||S.decks[today()]||S.cgen.busy||S.ai==='blocked')return;S.cAuto=true;
+async function autoCards(){if(!(S.cfg.dailyGen!==false)||S.cAuto||!S.loaded||!S.sample||!S.db||!S.uid||S.decks[today()]||S.cgen.busy||S.ai==='blocked')return;S.cAuto=true;
  try{const l=await S.db.doc('locks/cards-'+today()).acquire({holder:S.uid,ttlMs:180000});if(!l.acquired){S.cgen.other=true;if(cv().v==='cards')app.innerHTML=viewCards(today());return}}catch(e){return}genCards()}
 async function genCards(){if(S.cgen.busy)return;if(!S.sample){S.cgen.err='Flashcards are written by Claude. Open this page signed in on claude.ai.';app.innerHTML=viewCards(today());return}
  S.cgen={busy:true,err:'',other:false};delete S.prac[today()];if(cv().v==='cards')app.innerHTML=viewCards(today());
@@ -633,7 +641,7 @@ async function guessFit(date,i,raw){const cards=fitOf(date);if(!cards||!cards[i]
  else entry={c:k,s:Math.min(15,card.ranking[card.ranking.length-1].s),w:'Outside the top 20 contenders for this case.',r:0};
  s.g[i].push(entry);if(s.g[i].length>=FIT_TRIES||entry.r===1)s.rev[i]=true;saveFS(date,s);app.innerHTML=viewFit(date);const el=$('#fitguess');if(el&&!s.rev[i])el.focus()}
 function revealFit(date,i){const cards=fitOf(date);if(!cards)return;let s=vFS(date,S.uid);s=s?clone(s):{date,uid:S.uid||'',ver:fver(date),g:cards.map(()=>[]),rev:cards.map(()=>false)};s.rev[i]=true;saveFS(date,s);app.innerHTML=viewFit(date)}
-async function autoFit(){if(S.fAuto||!S.loaded||!S.sample||!S.db||!S.uid||S.fits[today()]||S.fgen.busy||S.ai==='blocked')return;S.fAuto=true;
+async function autoFit(){if(!(S.cfg.dailyGen!==false)||S.fAuto||!S.loaded||!S.sample||!S.db||!S.uid||S.fits[today()]||S.fgen.busy||S.ai==='blocked')return;S.fAuto=true;
  try{const l=await S.db.doc('locks/fit-'+today()).acquire({holder:S.uid,ttlMs:240000});if(!l.acquired){S.fgen.other=true;if(cv().v==='fit')app.innerHTML=viewFit(today());return}}catch(e){return}genFit()}
 async function genFit(){if(S.fgen.busy)return;if(!S.sample){S.fgen.err='GTM Fit cards are written by Claude. Open this page signed in on claude.ai.';app.innerHTML=viewFit(today());return}
  S.fgen={busy:true,err:'',other:false};if(cv().v==='fit')app.innerHTML=viewFit(today());
@@ -727,7 +735,7 @@ async function openGM(id,p,a){const d=drill(id);if(!d)return;S.gm={id,p,a,prompt
  <li>3. Copy Claude's whole reply and paste it here:<textarea id="gmreply" rows="5" placeholder="Paste Claude's reply (the JSON) here"></textarea></li></ol>
  <textarea id="gmprompt" rows="3" readonly hidden aria-label="Grading prompt"></textarea>
  <p class="err small" id="gmerr" hidden></p>
- <div class="row"><button class="btn" data-act="gmapply">Submit my score</button><button class="btn ghost" data-act="gmqueue">Let a teammate's Claude grade it</button><button class="btn ghost" data-act="gmclose">Cancel</button></div></div>`;
+ <div class="row"><button class="btn" data-act="gmapply">Submit my score</button><button class="btn ghost" data-act="gmqueue">Send to the auto-grader</button><button class="btn ghost" data-act="gmclose">Cancel</button></div></div>`;
  el.hidden=false;const b=el.querySelector('[data-act=gmcopy]');if(b)b.focus()}
 function closeGM(){const el=$('#gm');if(el)el.hidden=true;S.gm=null}
 async function gmCopy(btn){const g=S.gm;if(!g)return;try{await navigator.clipboard.writeText(g.prompt);btn.textContent='Copied ✓ Now paste it into Claude'}catch(e){const t=$('#gmprompt');t.hidden=false;t.value=g.prompt;t.focus();t.select();btn.textContent='Select all in the box below and copy'}}
@@ -738,13 +746,25 @@ async function gmApply(){const g=S.gm;if(!g)return;const err=$('#gmerr'),r=parse
  const d=drill(g.id);MAN={mode:'ans',ans:g.p==='q'?{extract:r.extract||{},grade:r.grade||{}}:{grade:r}};let sub;try{sub=await buildSub(d,g.a,g.p)}catch(e){MAN=null;return bad('Could not read the scores. Try pasting again.')}MAN=null;
  sub.selfGraded=true;closeGM();await storeSub(g.id,g.p,g.a,sub)}
 
+
+/* ---------- admin ---------- */
+const isOwner=()=>!!S.uid&&S.adm.owner===S.uid,isAdmin=()=>!!S.uid&&(isOwner()||(S.adm.admins||[]).includes(S.uid));
+function adminPanel(){if(!isAdmin())return '';const on=S.cfg.dailyGen!==false,mem=memberList();
+ return `<section class="adminp"><h2>Admin</h2><div class="arow"><div><b>Daily generation</b><p class="small muted">When on, a new drill, flashcard deck and GTM Fit set are queued every morning before 7:00 AM Pacific. When off, nothing new is generated automatically; Extra drill and the hourly auto-grader keep working.${S.cfg.by?' Last changed by '+esc(nameOf(S.cfg.by))+' '+esc(ago(S.cfg.at))+'.':''}</p></div>
+ <button class="sw${on?' on':''}" role="switch" aria-checked="${on}" data-act="gentoggle"><span></span>${on?'On':'Off'}</button></div>
+ ${isOwner()?`<div class="arow col"><b>Admins</b><p class="small muted">Admins can turn daily generation on and off. Only you (the owner) can add or remove admins.</p><ul class="alist">${mem.map(m=>{const a=m.uid===S.adm.owner?'owner':(S.adm.admins||[]).includes(m.uid);return `<li>${av(m.uid,'sm')}<span>${esc(m.name)}</span>${a==='owner'?'<em>Owner</em>':`<button class="btn ghost sm" data-act="admtoggle" data-u="${esc(m.uid)}">${a?'Remove admin':'Make admin'}</button>`}</li>`}).join('')}</ul></div>`:''}</section>`}
+async function genToggle(){if(!isAdmin()||!S.db)return;const v={dailyGen:S.cfg.dailyGen===false,by:S.uid,at:new Date().toISOString()};const old=S.cfg;S.cfg=v;route(true);
+ try{await S.db.doc('settings/app').set(v);flash('Daily generation is now '+(v.dailyGen?'on':'off')+'.','',true)}catch(e){S.cfg=old;route(true);flash('Could not change the setting.')}}
+async function admToggle(u){if(!isOwner()||!S.db)return;const cur=new Set(S.adm.admins||[]);cur.has(u)?cur.delete(u):cur.add(u);const v={owner:S.adm.owner,admins:[...cur]};
+ try{await S.db.doc('config/admins').set(v);S.adm=v;route(true)}catch(e){flash('Only the owner can change admins.')}}
+
 /* ---------- teammate grading: people without Claude access queue, anyone with Claude grades ---------- */
 const pendKey=(id,uid,p)=>subKey(id,uid,p);
 const myPend=(id,p)=>{const x=S.pend[pendKey(id,S.uid,p)];return x&&!x.done?x:null};
 async function queueGrade(id,p,a){if(!S.db||!S.uid){flash('Register first so your answers can be saved for grading.');return}
  const job={id,p,uid:S.uid,answers:a,date:dailyDate(id)||'',start:a[p+'Start']||0,at:new Date().toISOString(),done:false};
  S.pend[pendKey(id,S.uid,p)]=job;updateBar();
- try{await S.db.doc('pending/'+pendKey(id,S.uid,p)).set(job);flash('Submitted. Your account can\'t run Claude here, so a teammate\'s Claude will grade it automatically the next time someone with Claude has Drill Room open. Your score appears on the board then.','',true)}
+ try{await S.db.doc('pending/'+pendKey(id,S.uid,p)).set(job);flash('Submitted to the auto-grader. It runs every hour from 7 AM to 11 PM Pacific (or sooner if a teammate with Claude has Drill Room open). Your score appears on the board then.','',true)}
  catch(e){delete S.pend[pendKey(id,S.uid,p)];updateBar();flash('Could not save your answers. Check your connection and try again.')}}
 let gradingQ=false;
 async function processPending(){if(gradingQ||!S.sample||!S.db||!S.uid||!S.loaded||S.ai==='blocked')return;
@@ -762,7 +782,7 @@ async function claimToday(id){const t=today();if(S.days[t]||!S.db)return;const r
 function autoPick(){const recent=Object.values(S.drills).sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,8).map(x=>String(x.industry||'').toLowerCase());
  const n=Math.floor(Date.now()/864e5);const ind=INDUSTRIES.map((_,i)=>INDUSTRIES[(n+i)%INDUSTRIES.length]).find(x=>!recent.some(r=>r.includes(x.split(' ')[0].toLowerCase())))||INDUSTRIES[n%INDUSTRIES.length];
  return{industry:ind,module:MODULES[n%MODULES.length]}}
-async function autoGen(){if(S.autoTried||!S.loaded||!S.sample||!S.db||!S.uid||S.days[today()]||S.gen.busy||S.ai==='blocked')return;S.autoTried=true;
+async function autoGen(){if(!(S.cfg.dailyGen!==false)||S.autoTried||!S.loaded||!S.sample||!S.db||!S.uid||S.days[today()]||S.gen.busy||S.ai==='blocked')return;S.autoTried=true;
  const ref=S.db.doc('locks/gen-'+today());
  try{const l=await ref.acquire({holder:S.uid,ttlMs:300000});if(!l.acquired){checkLock();return}await ref.set({by:S.uid,at:new Date().toISOString()});}catch(e){return}
  const p=autoPick();Object.assign(S.gen,{prompt:'',industry:p.industry,module:p.module,depth:'std'});generate(true)}
@@ -890,7 +910,7 @@ function secCoach(id){return `<section class="sec" id="s-coach"><h2>Ask the coac
 function bar(){return `<div class="bar"><div class="wrap"><div class="grow"><span id="prog"></span><span id="clock" class="muted"></span></div><button class="btn" id="submit" data-act="submit">Submit ${S.tab==='q'?'Quant':'Recs'}</button></div></div>`}
 function updateBar(){const p=$('#prog'),b=$('#submit');const d=S.cur&&drill(S.cur);if(d&&S.draft)['q','r'].forEach(x=>{const e=$('#tabst-'+x);if(e&&!mySub(S.cur,x)){const[n,t]=progress(d,S.draft,x);if(n)e.textContent=n+'/'+t+' answered'}});
  if(!p||!S.draft||!d)return;const[n,t]=progress(d,S.draft,S.tab);p.innerHTML=`<b>${n}/${t}</b>&nbsp;answered`;
- if(S.grading){b.disabled=true;b.textContent='Scoring… your Claude is reading';b.className='btn'}else if(myPend(S.cur,S.tab)){b.disabled=true;b.textContent='Submitted · waiting for a teammate\'s Claude to grade';b.className='btn'}else{b.disabled=false;b.textContent=S.armed?'Submit anyway? '+(t-n)+' left':'Submit '+(S.tab==='q'?'Quant':'Recs');b.className=S.armed?'btn warn':'btn'}}
+ if(S.grading){b.disabled=true;b.textContent='Scoring… your Claude is reading';b.className='btn'}else if(myPend(S.cur,S.tab)){b.disabled=true;b.textContent='Queued for the auto-grader (runs hourly)';b.className='btn'}else{b.disabled=false;b.textContent=S.armed?'Submit anyway? '+(t-n)+' left':'Submit '+(S.tab==='q'?'Quant':'Recs');b.className=S.armed?'btn warn':'btn'}}
 function viewDrill(id){const d=drill(id);if(!d)return S.loaded?`<section class="band"><div class="wrap"><h1>Drill not found</h1><p class="lede">It may have been removed. <a href="#archive">Browse the archive</a>.</p></div></section>`:loading();
  const p=S.tab,m=mySub(id,p),done=!!m;ensureDraft(id,d);const a=done?merge(blank(d),m.answers):S.draft,f=done?m.feedback:null,ex=done?m.extract:null;
  const lmOn=done?!!m.lmOn:!a.skipLong,mk=done&&p==='q'?marks(d,a,ex,lmOn):{sm:[],lm:[]};const bothDone=mySub(id,'q')&&mySub(id,'r');
@@ -914,7 +934,7 @@ function genBox(){const g=S.gen;return `<textarea id="genp" rows="3" placeholder
 function chip(gr,x,on){return `<button class="chip${on?' on':''}" data-chip="${gr}" data-v="${esc(x)}" aria-pressed="${on}" ${S.gen.busy?'disabled':''}>${esc(x)}</button>`}
 function renderGen(){const b=$('#genbox');if(b)b.innerHTML=genBox();const a=$('#autogen');if(a)a.innerHTML=autoBox()}
 function viewGen(){const has=!!S.days[today()];return `<section class="band soft"><div class="wrap"><h1>Extra drill</h1><p class="lede">${has?'A new daily drill is generated automatically each day. Use this for extra practice on any case, industry or skill; it goes to the archive.':'Today\'s daily drill hasn\'t been generated yet, so the first drill you make here becomes today\'s.'}</p><div id="genbox" style="max-width:900px">${genBox()}</div></div></section>`}
-function autoBox(){const g=S.gen;if(g.busy&&g.auto)return `<p><span class="spin"></span>&nbsp; Your Claude is writing today's drill (${esc(g.industry)}, ${esc(g.module)}). <span class="genstatus">${esc(g.status)}</span></p><p class="small">You can stay on this page; it opens automatically when it's ready.</p>`;
+function autoBox(){const g=S.gen;if(S.cfg.dailyGen===false&&!g.busy)return `<p>Daily generation is paused by an admin. Use <a href="#new" style="color:inherit;text-decoration:underline">Extra drill</a> to make one yourself.</p>`;if(g.busy&&g.auto)return `<p><span class="spin"></span>&nbsp; Your Claude is writing today's drill (${esc(g.industry)}, ${esc(g.module)}). <span class="genstatus">${esc(g.status)}</span></p><p class="small">You can stay on this page; it opens automatically when it's ready.</p>`;
  if(S.lock)return `<p><span class="spin"></span>&nbsp; ${esc(nameOf(S.lock.by))}'s Claude is writing today's drill right now. It will appear here automatically, usually within 1–3 minutes.</p>`;
  if(!S.sample)return `<p>Today's drill is generated automatically by the first teammate who opens Drill Room on claude.ai.</p>`;
  if(S.ai==='blocked')return `<p>Claude access is off for this page, so today's drill can't be generated. Use "Allow Claude" in the sidebar.</p>`;
@@ -1021,7 +1041,7 @@ function viewTeam(){const mem=memberList(),dm=dailyMap(),tv=S.days[today()],tid=
  <div class="polaroids">${S.wall.map((x,i)=>`<button class="pol" style="--r:${x.r}deg" data-act="photo" data-i="${i}" aria-label="Open team photo ${i+1}"><img src="img/${x.p}.jpg" alt="Team photo ${i+1}" loading="lazy"></button>`).join('')}</div>
  <div class="wallbar"><button class="btn light" data-act="shuffle">Shuffle the wall</button><button class="btn light" data-act="invite">Copy invite link</button></div><p class="small" style="text-align:center;margin:10px auto 0;max-width:56ch;opacity:.9">The link only opens for people you've invited by email in the Share menu on claude.ai. Invite teammates as Editors so they can sign up and save scores. They sign in with that same email, open the link, allow Claude, and add it to their home screen.</p>
  <div class="tiles"><div class="tile"><b>${mem.length}</b><span>Members</span></div><div class="tile"><b>${dm.size}</b><span>Daily drills so far</span></div><div class="tile"><b>${tid?mem.filter(m=>did(m.uid,'q')).length+' / '+mem.filter(m=>did(m.uid,'r')).length:'—'}</b><span>Quant / Rec done today</span></div><div class="tile"><b>${teamAvg??'—'}</b><span>Team average per part</span></div></div></div>${GLOBE}</section>
- <main class="wrap wide"><div class="people">${mem.length?mem.map((m,i)=>{const s=all[i],l=look(m.uid);return `<article class="person"><header>${av(m.uid,'lg')}<div><b>${esc(m.name)}${m.uid===S.uid?' (you)':''}</b>${l.title?`<span class="ttl">${esc(l.title)}</span>`:''}<span>${esc(m.role||'Team member')}</span><span>${esc(m.email)}</span></div></header>
+ <main class="wrap wide">${adminPanel()}<div class="people">${mem.length?mem.map((m,i)=>{const s=all[i],l=look(m.uid);return `<article class="person"><header>${av(m.uid,'lg')}<div><b>${esc(m.name)}${m.uid===S.uid?' (you)':''}</b>${l.title?`<span class="ttl">${esc(l.title)}</span>`:''}<span>${esc(m.role||'Team member')}</span><span>${esc(m.email)}</span></div></header>
  <div class="pstats"><div><b>${s.qAvg??'—'}</b><span>Quant avg</span></div><div><b>${s.rAvg??'—'}</b><span>Rec avg</span></div><div><b>${s.days}/${s.D}</b><span>Days</span></div><div><b>${s.streak}</b><span>Streak</span></div></div>
  ${meterRow('Participation',s.days,s.D)}${meterRow('Verbal math',s.vm[0],s.vm[1])}${meterRow('Math KPIs',s.kpi[0],s.kpi[1],'ok')}${meterRow('Recs',s.rec[0],s.rec[1],'acc')}${meterRow('Flashcards',s.cards[0],s.cards[1],'ok')}
  ${spark(s.trend)}${badgeRow(s)}<p class="small muted" style="margin:8px 0 0">${s.got.length}/${MS.length} milestones · ${s.champs} daily award${s.champs===1?'':'s'} · last active ${esc(ago(s.last))} · today: ${did(m.uid,'q')?'Q ✓':'Q –'} ${did(m.uid,'r')?'R ✓':'R –'}</p>${m.uid===S.uid?'<p style="margin:8px 0 0"><a href="#profile">Edit profile and look</a></p>':''}</article>`}).join(''):'<p class="empty">Nobody has registered yet.</p>'}</div></main>`}
@@ -1057,6 +1077,7 @@ function renderD3(){const el=$('#d3side');if(!el)return;if(!S.uid||!S.members[S.
  el.hidden=false;el.href=nx;el.title=n===3?'All 3 done today':'Next: '+(nx==='#today'?'today\'s drill':nx==='#cards'?'flashcards':'GTM Fit');if(el.innerHTML!==h)el.innerHTML=h}
 new MutationObserver(()=>renderD3()).observe(document.getElementById('app'),{childList:true});
 
+window.__DR={GEN,CARDS_GEN,FIT_GEN,EXTRACT,normalize,normCard,normFit,giveaway,stagesOf,INDUSTRIES,MODULES,manualPrompt,buildSub,parseReply,blank,merge,setMAN:x=>{MAN=x}};
 /* ---------- routing ---------- */
 let viewKey='';
 function cv(){const h=location.hash.slice(1);if(S.db&&S.uid&&S.loaded&&!S.members[S.uid])return{v:'profile'};if(['new','archive','board','team','profile','awards','cards','fit'].includes(h))return{v:h};if(h==='fmix')return{v:'fit',date:'fmix'};if(h==='cmix')return{v:'cards',date:'mix'};if(/^f-\d{4}-\d{2}-\d{2}$/.test(h))return{v:'fit',date:h.slice(2)};if(/^c-\d{4}-\d{2}-\d{2}$/.test(h))return{v:'cards',date:h.slice(2)};
@@ -1082,6 +1103,7 @@ document.addEventListener('click',e=>{if(e.target.id==='lb'){closeLB();return}co
  else if(a==='cmix'){startMix('c');if(location.hash!=='#cmix')location.hash='cmix';else app.innerHTML=viewCards('mix');scrollTo(0,0)}
  else if(a==='fmix'){startMix('f');if(location.hash!=='#fmix')location.hash='fmix';else app.innerHTML=viewFit('fmix');scrollTo(0,0)}
  else if(a==='gmcopy')gmCopy(b);else if(a==='gmapply')gmApply();else if(a==='gmclose')closeGM();else if(a==='gmqueue'){const g=S.gm;closeGM();if(g)queueGrade(g.id,g.p,g.a)}
+ else if(a==='gentoggle')genToggle();else if(a==='admtoggle')admToggle(b.dataset.u);
  else if(a==='cans'){answerCard(cv().date||today(),+b.dataset.i,+b.dataset.j,+b.dataset.s)}
  else if(a==='cstage'){const d=cv().date||today(),k=d+':'+b.dataset.i+(S.prac[d]?':p':'');S.stage[k]=+b.dataset.s;S.justFlipped=k;app.innerHTML=viewCards(d);const el=$('.fdots');if(el)el.scrollIntoView({block:'nearest'})}
  else if(a==='cnext'||a==='cgo'){const d=cv().date||today(),cards=deckOf(d)||[],s=cSrc(d);S.showRev=false;if(a==='cgo')S.cIdx[d]=+b.dataset.i;else{const cur=S.cIdx[d]||0;let nx=cards.findIndex((x,k)=>k>cur&&!doneIn(x,k,s));if(nx<0)nx=cards.findIndex((x,k)=>!doneIn(x,k,s));S.cIdx[d]=nx<0?cards.length:nx}app.innerHTML=viewCards(d);const el=$('.fdots');if(el)el.scrollIntoView({block:'nearest'})}
@@ -1114,6 +1136,9 @@ route(true);
  const snap=(path,key,build)=>S.db.collection(path).limit(1000).onSnapshot(q=>{build(q.docs);ready(key)},fail);
  snap('drills','d',docs=>{const nx={};docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.drills))if(!nx[k]&&v)nx[k]=v;S.drills=nx});
  snap('days','y',docs=>{const nx={};docs.forEach(x=>{nx[x.id]=x.data()});const had=!!S.days[today()];S.days=nx;if(!had&&nx[today()]&&!S.gen.busy&&cv().v==='today')viewKey=''});
+ const one=(q,id)=>{const x=q.docs.find(d=>d.id===id);return x?x.data():{}};
+ S.db.collection('settings').limit(20).onSnapshot(q=>{S.cfg=Object.assign({dailyGen:true},one(q,'app'));if(S.loaded)route()},()=>{});
+ S.db.collection('config').limit(20).onSnapshot(q=>{S.adm=Object.assign({owner:'',admins:[]},one(q,'admins'));if(!S.adm.owner&&S.uid&&!S.admTry){S.admTry=1;S.db.doc('config/admins').set({owner:S.uid,admins:[]}).catch(()=>{})}if(S.loaded&&cv().v==='team')route(true)},()=>{});
  S.db.collection('pending').limit(500).onSnapshot(q=>{const nx={};q.docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.pend))if(v&&!nx[k])nx[k]=v;S.pend=nx;updateBar();setTimeout(processPending,800)},()=>{});
  snap('subs','s',docs=>{const nx={};docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.subs))if(v&&v.local&&!nx[k])nx[k]=v;S.subs=nx});
  S.db.collection('decks').limit(400).onSnapshot(q=>{const nx={};q.docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.decks))if(!nx[k]&&v)nx[k]=v;S.decks=nx;S.cache.clear();if(S.loaded)route()},()=>{});
