@@ -356,7 +356,7 @@ pre,.scroll{overflow-x:auto}
 
 .adminp{border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin:0 0 20px}.adminp h2{margin:0 0 8px;font-size:18px}
 .adminp .arow{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line)}.adminp .arow.col{display:block}
-.adminp p{margin:4px 0 0;max-width:62ch}.alist{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:8px}.alist li{display:flex;align-items:center;gap:10px}.alist li span{flex:1}.alist em{font-style:normal;font-size:13px;color:var(--muted)}
+.adminp p{margin:4px 0 0;max-width:62ch}.alist{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:8px}.alist li{display:flex;align-items:center;gap:10px}.alist li>span:not(.ini){flex:1}.alist em{font-style:normal;font-size:13px;color:var(--muted)}
 .btn.sm{min-height:34px;padding:0 12px;font-size:13.5px}
 .sw{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:999px;padding:4px 12px 4px 4px;background:transparent;color:var(--ink);font:inherit;font-weight:600;cursor:pointer;min-height:36px}
 .sw span{width:38px;height:22px;border-radius:999px;background:#c9cfdc;position:relative;transition:background .2s}.sw span::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s}
@@ -589,7 +589,7 @@ function answerCard(date,i,j,st){const cards=deckOf(date);if(!cards||!cards[i])r
  if(prac)S.prac[date]=s;else{s.at=new Date().toISOString();S.localCS[date]=s;S.csubs[csKey(date,S.uid)]=s;S.cache.clear();const snap=clone(s);if(S.db&&S.uid)csSave=csSave.then(()=>S.db.doc('cardsubs/'+csKey(date,S.uid)).set(snap)).catch(()=>{})}
  app.innerHTML=viewCards(date)}
 function flagCard(date,i){const s=myCS(date);if(!s)return;const n=clone(s);n.flags=Array.from(new Set([...(n.flags||[]),i]));S.localCS[date]=n;S.csubs[csKey(date,S.uid)]=n;if(S.db&&S.uid)csSave=csSave.then(()=>S.db.doc('cardsubs/'+csKey(date,S.uid)).set(n)).catch(()=>{});app.innerHTML=viewCards(date)}
-async function autoCards(){if(!(S.cfg.dailyGen!==false)||S.cAuto||!S.loaded||!S.sample||!S.db||!S.uid||S.decks[today()]||S.cgen.busy||S.ai==='blocked')return;S.cAuto=true;
+async function autoCards(){if(!on('genCards')||S.cAuto||!S.loaded||!S.sample||!S.db||!S.uid||S.decks[today()]||S.cgen.busy||S.ai==='blocked')return;S.cAuto=true;
  try{const l=await S.db.doc('locks/cards-'+today()).acquire({holder:S.uid,ttlMs:180000});if(!l.acquired){S.cgen.other=true;if(cv().v==='cards')app.innerHTML=viewCards(today());return}}catch(e){return}genCards()}
 async function genCards(){if(S.cgen.busy)return;if(!S.sample){S.cgen.err='Flashcards are written by Claude. Open this page signed in on claude.ai.';app.innerHTML=viewCards(today());return}
  S.cgen={busy:true,err:'',other:false};delete S.prac[today()];if(cv().v==='cards')app.innerHTML=viewCards(today());
@@ -634,14 +634,14 @@ async function guessFit(date,i,raw){const cards=fitOf(date);if(!cards||!cards[i]
  if(s.rev[i]||s.g[i].length>=FIT_TRIES)return;if(s.g[i].some(x=>x.c===k)){S.ferr='You already tried '+k+'.';app.innerHTML=viewFit(date);return}
  S.ferr='';const idx=card.ranking.findIndex(r=>r.c===k);let entry;
  if(idx>=0){const r=card.ranking[idx];entry={c:k,s:r.s,w:r.why,r:idx+1}}
- else if(S.sample){S.fbusy=true;app.innerHTML=viewFit(date);
+ else if(S.sample&&on('fitAI')){S.fbusy=true;app.innerHTML=viewFit(date);
   try{const r=await askJSON(FIT_SCORE+'\n\nDATA:\n'+JSON.stringify({case:card.prompt,need:card.need,industry:card.industry,criteria:card.criteria,ranking:card.ranking.map(x=>x.c+' '+x.s),guess:k}),{modelTier:'default'})||{};
    const top20=card.ranking[card.ranking.length-1].s;entry={c:k,s:Math.max(0,Math.min(top20,Math.round(Number(r.score)||0))),w:String(r.why||'Outside the top contenders.'),r:0}}
   catch(e){entry={c:k,s:Math.min(15,card.ranking[card.ranking.length-1].s),w:'Outside the top 20 contenders for this case.',r:0}}S.fbusy=false}
  else entry={c:k,s:Math.min(15,card.ranking[card.ranking.length-1].s),w:'Outside the top 20 contenders for this case.',r:0};
  s.g[i].push(entry);if(s.g[i].length>=FIT_TRIES||entry.r===1)s.rev[i]=true;saveFS(date,s);app.innerHTML=viewFit(date);const el=$('#fitguess');if(el&&!s.rev[i])el.focus()}
 function revealFit(date,i){const cards=fitOf(date);if(!cards)return;let s=vFS(date,S.uid);s=s?clone(s):{date,uid:S.uid||'',ver:fver(date),g:cards.map(()=>[]),rev:cards.map(()=>false)};s.rev[i]=true;saveFS(date,s);app.innerHTML=viewFit(date)}
-async function autoFit(){if(!(S.cfg.dailyGen!==false)||S.fAuto||!S.loaded||!S.sample||!S.db||!S.uid||S.fits[today()]||S.fgen.busy||S.ai==='blocked')return;S.fAuto=true;
+async function autoFit(){if(!on('genFit')||S.fAuto||!S.loaded||!S.sample||!S.db||!S.uid||S.fits[today()]||S.fgen.busy||S.ai==='blocked')return;S.fAuto=true;
  try{const l=await S.db.doc('locks/fit-'+today()).acquire({holder:S.uid,ttlMs:240000});if(!l.acquired){S.fgen.other=true;if(cv().v==='fit')app.innerHTML=viewFit(today());return}}catch(e){return}genFit()}
 async function genFit(){if(S.fgen.busy)return;if(!S.sample){S.fgen.err='GTM Fit cards are written by Claude. Open this page signed in on claude.ai.';app.innerHTML=viewFit(today());return}
  S.fgen={busy:true,err:'',other:false};if(cv().v==='fit')app.innerHTML=viewFit(today());
@@ -735,7 +735,7 @@ async function openGM(id,p,a){const d=drill(id);if(!d)return;S.gm={id,p,a,prompt
  <li>3. Copy Claude's whole reply and paste it here:<textarea id="gmreply" rows="5" placeholder="Paste Claude's reply (the JSON) here"></textarea></li></ol>
  <textarea id="gmprompt" rows="3" readonly hidden aria-label="Grading prompt"></textarea>
  <p class="err small" id="gmerr" hidden></p>
- <div class="row"><button class="btn" data-act="gmapply">Submit my score</button><button class="btn ghost" data-act="gmqueue">Send to the auto-grader</button><button class="btn ghost" data-act="gmclose">Cancel</button></div></div>`;
+ <div class="row"><button class="btn" data-act="gmapply">Submit my score</button>${on('autoGrade')||on('tabGrade')?'<button class="btn ghost" data-act="gmqueue">Send to the auto-grader</button>':''}<button class="btn ghost" data-act="gmclose">Cancel</button></div></div>`;
  el.hidden=false;const b=el.querySelector('[data-act=gmcopy]');if(b)b.focus()}
 function closeGM(){const el=$('#gm');if(el)el.hidden=true;S.gm=null}
 async function gmCopy(btn){const g=S.gm;if(!g)return;try{await navigator.clipboard.writeText(g.prompt);btn.textContent='Copied ✓ Now paste it into Claude'}catch(e){const t=$('#gmprompt');t.hidden=false;t.value=g.prompt;t.focus();t.select();btn.textContent='Select all in the box below and copy'}}
@@ -749,12 +749,21 @@ async function gmApply(){const g=S.gm;if(!g)return;const err=$('#gmerr'),r=parse
 
 /* ---------- admin ---------- */
 const isOwner=()=>!!S.uid&&S.adm.owner===S.uid,isAdmin=()=>!!S.uid&&(isOwner()||(S.adm.admins||[]).includes(S.uid));
-function adminPanel(){if(!isAdmin())return '';const on=S.cfg.dailyGen!==false,mem=memberList();
- return `<section class="adminp"><h2>Admin</h2><div class="arow"><div><b>Daily generation</b><p class="small muted">When on, a new drill, flashcard deck and GTM Fit set are queued every morning before 7:00 AM Pacific. When off, nothing new is generated automatically; Extra drill and the hourly auto-grader keep working.${S.cfg.by?' Last changed by '+esc(nameOf(S.cfg.by))+' '+esc(ago(S.cfg.at))+'.':''}</p></div>
- <button class="sw${on?' on':''}" role="switch" aria-checked="${on}" data-act="gentoggle"><span></span>${on?'On':'Off'}</button></div>
- ${isOwner()?`<div class="arow col"><b>Admins</b><p class="small muted">Admins can turn daily generation on and off. Only you (the owner) can add or remove admins.</p><ul class="alist">${mem.map(m=>{const a=m.uid===S.adm.owner?'owner':(S.adm.admins||[]).includes(m.uid);return `<li>${av(m.uid,'sm')}<span>${esc(m.name)}</span>${a==='owner'?'<em>Owner</em>':`<button class="btn ghost sm" data-act="admtoggle" data-u="${esc(m.uid)}">${a?'Remove admin':'Make admin'}</button>`}</li>`}).join('')}</ul></div>`:''}</section>`}
-async function genToggle(){if(!isAdmin()||!S.db)return;const v={dailyGen:S.cfg.dailyGen===false,by:S.uid,at:new Date().toISOString()};const old=S.cfg;S.cfg=v;route(true);
- try{await S.db.doc('settings/app').set(v);flash('Daily generation is now '+(v.dailyGen?'on':'off')+'.','',true)}catch(e){S.cfg=old;route(true);flash('Could not change the setting.')}}
+const on=k=>S.cfg[k]!==false;
+const SWITCHES=[['dailyGen','Daily drill','Writes the day\'s case drill each morning (scheduled before 7 AM, or the first teammate to open the page).'],
+ ['genCards','Daily flashcards','Writes the day\'s flashcard deck.'],['genFit','Daily GTM Fit','Writes the day\'s 5 GTM Fit cases.'],
+ ['autoGrade','Hourly auto-grader','Scheduled task that grades queued answers every hour, 7 AM to 11 PM, on the owner\'s Claude.'],
+ ['tabGrade','Background grading in open tabs','Anyone with Claude who has Drill Room open quietly grades teammates\' queued answers on their own Claude.'],
+ ['fitAI','AI scoring for off-list Fit guesses','Scores GTM Fit guesses outside the top 20. Off: they get a fixed low score.'],
+ ['regen','"New deck" / "New cases" buttons','Lets anyone regenerate today\'s flashcards or Fit cases for everyone.'],
+ ['extra','Extra drill generator','The Extra drill page and Surprise me button.'],['coach','Ask the coach','The coach box under each drill.']];
+function adminPanel(){if(!isAdmin())return '';const mem=memberList(),nOn=SWITCHES.filter(s=>on(s[0])).length;
+ return `<section class="adminp"><h2>Admin · Claude usage</h2><p class="small muted">Everything below runs Claude automatically or on demand. Grading your own submissions always stays on.${S.cfg.by?' Last changed by '+esc(nameOf(S.cfg.by))+' '+esc(ago(S.cfg.at))+'.':''}</p>
+ <div class="row" style="margin:10px 0 4px"><button class="btn ghost sm" data-act="swall" data-v="0">Turn all off</button><button class="btn ghost sm" data-act="swall" data-v="1">Turn all on</button><span class="small muted" style="align-self:center">${nOn}/${SWITCHES.length} on</span></div>
+ ${SWITCHES.map(([k,l,d])=>`<div class="arow"><div><b>${esc(l)}</b><p class="small muted">${esc(d)}</p></div><button class="sw${on(k)?' on':''}" role="switch" aria-checked="${on(k)}" aria-label="${esc(l)}" data-act="gentoggle" data-k="${k}"><span></span>${on(k)?'On':'Off'}</button></div>`).join('')}
+ ${isOwner()?`<div class="arow col"><b>Admins</b><p class="small muted">Admins can change these switches. Only you (the owner) can add or remove admins.</p><ul class="alist">${mem.map(m=>{const a=m.uid===S.adm.owner?'owner':(S.adm.admins||[]).includes(m.uid);return `<li>${av(m.uid,'sm')}<span>${esc(m.name)}</span>${a==='owner'?'<em>Owner</em>':`<button class="btn ghost sm" data-act="admtoggle" data-u="${esc(m.uid)}">${a?'Remove admin':'Make admin'}</button>`}</li>`}).join('')}</ul></div>`:''}</section>`}
+async function setSwitches(patch){if(!isAdmin()||!S.db)return;const v=Object.assign({},S.cfg,patch,{by:S.uid,at:new Date().toISOString()});const old=S.cfg;S.cfg=v;route(true);
+ try{await S.db.doc('settings/app').set(v)}catch(e){S.cfg=old;route(true);flash('Could not change the setting.')}}
 async function admToggle(u){if(!isOwner()||!S.db)return;const cur=new Set(S.adm.admins||[]);cur.has(u)?cur.delete(u):cur.add(u);const v={owner:S.adm.owner,admins:[...cur]};
  try{await S.db.doc('config/admins').set(v);S.adm=v;route(true)}catch(e){flash('Only the owner can change admins.')}}
 
@@ -767,7 +776,7 @@ async function queueGrade(id,p,a){if(!S.db||!S.uid){flash('Register first so you
  try{await S.db.doc('pending/'+pendKey(id,S.uid,p)).set(job);flash('Submitted to the auto-grader. It runs every hour from 7 AM to 11 PM Pacific (or sooner if a teammate with Claude has Drill Room open). Your score appears on the board then.','',true)}
  catch(e){delete S.pend[pendKey(id,S.uid,p)];updateBar();flash('Could not save your answers. Check your connection and try again.')}}
 let gradingQ=false;
-async function processPending(){if(gradingQ||!S.sample||!S.db||!S.uid||!S.loaded||S.ai==='blocked')return;
+async function processPending(){if(!on('tabGrade')||gradingQ||!S.sample||!S.db||!S.uid||!S.loaded||S.ai==='blocked')return;
  const job=Object.entries(S.pend).find(([k,j])=>j&&!j.done&&j.uid&&drill(j.id)&&!getSub(j.id,j.uid,j.p));if(!job)return;
  const[k,j]=job;gradingQ=true;
  try{const l=await S.db.doc('locks/grade-'+k).acquire({holder:S.uid,ttlMs:180000});if(!l.acquired){gradingQ=false;return}
@@ -782,7 +791,7 @@ async function claimToday(id){const t=today();if(S.days[t]||!S.db)return;const r
 function autoPick(){const recent=Object.values(S.drills).sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt))).slice(0,8).map(x=>String(x.industry||'').toLowerCase());
  const n=Math.floor(Date.now()/864e5);const ind=INDUSTRIES.map((_,i)=>INDUSTRIES[(n+i)%INDUSTRIES.length]).find(x=>!recent.some(r=>r.includes(x.split(' ')[0].toLowerCase())))||INDUSTRIES[n%INDUSTRIES.length];
  return{industry:ind,module:MODULES[n%MODULES.length]}}
-async function autoGen(){if(!(S.cfg.dailyGen!==false)||S.autoTried||!S.loaded||!S.sample||!S.db||!S.uid||S.days[today()]||S.gen.busy||S.ai==='blocked')return;S.autoTried=true;
+async function autoGen(){if(!on('dailyGen')||S.autoTried||!S.loaded||!S.sample||!S.db||!S.uid||S.days[today()]||S.gen.busy||S.ai==='blocked')return;S.autoTried=true;
  const ref=S.db.doc('locks/gen-'+today());
  try{const l=await ref.acquire({holder:S.uid,ttlMs:300000});if(!l.acquired){checkLock();return}await ref.set({by:S.uid,at:new Date().toISOString()});}catch(e){return}
  const p=autoPick();Object.assign(S.gen,{prompt:'',industry:p.industry,module:p.module,depth:'std'});generate(true)}
@@ -906,7 +915,7 @@ function results(m){const f=m.feedback,s=m.sec||{},q=m.part==='q';return `<secti
  ${m.aiErr?`<p class="small muted">${esc(m.aiErr)}</p>`:''}
  ${f&&f.overall?`<div class="cols"><div><b class="small">Strengths</b><ul>${f.overall.strengths.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><div><b class="small">Fix next time</b><ul>${f.overall.fixes.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div>`:''}</div></div></section>`}
 function secTeam(id,p){const s=subsFor(id,p).filter(x=>x.uid!==S.uid);return `<section class="sec" id="s-team"><h2>Team answers</h2>${s.length?s.map(x=>{const a=x.answers||{};return `<details class="card"><summary>${av(x.uid,'sm')}<span>${esc(nameOf(x.uid))}</span><b>${esc(x.total)}</b></summary>${p==='r'?`<p class="small muted">Pitch</p>${mine(a.pitch)}${(a.bs||[]).map((t,i)=>`<p class="small muted">Brainstorm ${i+1}</p>${mine(t)}`).join('')}`:`<p class="small muted">Short math</p>${mine(a.sm)}${x.lmOn?`<p class="small muted">Long math</p>${mine(a.lm)}`:''}`}</details>`}).join(''):'<p class="muted">Nobody else has submitted this part yet.</p>'}</section>`}
-function secCoach(id){return `<section class="sec" id="s-coach"><h2>Ask the coach</h2><p class="sub">Runs on your Claude. Ask why an answer is right, how a structure works, or how to tighten your pitch.</p><textarea id="coachq" rows="3" placeholder="e.g. Why is a deal-contingent forward better than an FX option here?"></textarea><div class="row"><button class="btn" data-act="coach" data-id="${esc(id)}">Ask</button></div><div id="coachout" class="coachout"></div></section>`}
+function secCoach(id){if(!on('coach'))return '';return `<section class="sec" id="s-coach"><h2>Ask the coach</h2><p class="sub">Runs on your Claude. Ask why an answer is right, how a structure works, or how to tighten your pitch.</p><textarea id="coachq" rows="3" placeholder="e.g. Why is a deal-contingent forward better than an FX option here?"></textarea><div class="row"><button class="btn" data-act="coach" data-id="${esc(id)}">Ask</button></div><div id="coachout" class="coachout"></div></section>`}
 function bar(){return `<div class="bar"><div class="wrap"><div class="grow"><span id="prog"></span><span id="clock" class="muted"></span></div><button class="btn" id="submit" data-act="submit">Submit ${S.tab==='q'?'Quant':'Recs'}</button></div></div>`}
 function updateBar(){const p=$('#prog'),b=$('#submit');const d=S.cur&&drill(S.cur);if(d&&S.draft)['q','r'].forEach(x=>{const e=$('#tabst-'+x);if(e&&!mySub(S.cur,x)){const[n,t]=progress(d,S.draft,x);if(n)e.textContent=n+'/'+t+' answered'}});
  if(!p||!S.draft||!d)return;const[n,t]=progress(d,S.draft,S.tab);p.innerHTML=`<b>${n}/${t}</b>&nbsp;answered`;
@@ -1097,13 +1106,14 @@ app.addEventListener('submit',e=>{if(e.target.id==='joinform'){e.preventDefault(
 document.addEventListener('click',e=>{if(e.target.id==='lb'){closeLB();return}const b=e.target.closest('[data-chip],[data-act]');if(!b||b.disabled)return;
  if(b.dataset.chip){const g=S.gen,v=b.dataset.v;if(b.dataset.chip==='ind')g.industry=g.industry===v?'':v;else if(b.dataset.chip==='mod')g.module=g.module===v?'':v;else g.depth=v==='Extra technical'?'tech':'std';renderGen();return}
  const a=b.dataset.act;
+ const gate={gen:'extra',surprise:'extra',gencards:'genCards',regencards:'regen',regenfit:'regen',coach:'coach'}[a];if(gate&&!on(gate)){flash('An admin has turned this off to save Claude usage.');return}
  if(a==='gen')generate(false);else if(a==='surprise'){Object.assign(S.gen,{prompt:'',industry:'',module:''});generate(false)}else if(a==='cancel'){if(S.gen.ctl)S.gen.ctl.abort()}
  else if(a==='photo')openLB(+b.dataset.i);else if(a==='lbprev')openLB(S.lb-1);else if(a==='lbnext')openLB(S.lb+1);else if(a==='lbclose')closeLB();
  else if(a==='shuffle'){S.wall=S.wall.map(x=>({p:x.p,r:Math.round(Math.random()*12-6),k:Math.random()})).sort((x,y)=>x.k-y.k);app.innerHTML=viewTeam()}
  else if(a==='cmix'){startMix('c');if(location.hash!=='#cmix')location.hash='cmix';else app.innerHTML=viewCards('mix');scrollTo(0,0)}
  else if(a==='fmix'){startMix('f');if(location.hash!=='#fmix')location.hash='fmix';else app.innerHTML=viewFit('fmix');scrollTo(0,0)}
  else if(a==='gmcopy')gmCopy(b);else if(a==='gmapply')gmApply();else if(a==='gmclose')closeGM();else if(a==='gmqueue'){const g=S.gm;closeGM();if(g)queueGrade(g.id,g.p,g.a)}
- else if(a==='gentoggle')genToggle();else if(a==='admtoggle')admToggle(b.dataset.u);
+ else if(a==='gentoggle'){const k=b.dataset.k;setSwitches({[k]:!on(k)})}else if(a==='swall'){const v=b.dataset.v==='1';setSwitches(Object.fromEntries(SWITCHES.map(s=>[s[0],v])))}else if(a==='admtoggle')admToggle(b.dataset.u);
  else if(a==='cans'){answerCard(cv().date||today(),+b.dataset.i,+b.dataset.j,+b.dataset.s)}
  else if(a==='cstage'){const d=cv().date||today(),k=d+':'+b.dataset.i+(S.prac[d]?':p':'');S.stage[k]=+b.dataset.s;S.justFlipped=k;app.innerHTML=viewCards(d);const el=$('.fdots');if(el)el.scrollIntoView({block:'nearest'})}
  else if(a==='cnext'||a==='cgo'){const d=cv().date||today(),cards=deckOf(d)||[],s=cSrc(d);S.showRev=false;if(a==='cgo')S.cIdx[d]=+b.dataset.i;else{const cur=S.cIdx[d]||0;let nx=cards.findIndex((x,k)=>k>cur&&!doneIn(x,k,s));if(nx<0)nx=cards.findIndex((x,k)=>!doneIn(x,k,s));S.cIdx[d]=nx<0?cards.length:nx}app.innerHTML=viewCards(d);const el=$('.fdots');if(el)el.scrollIntoView({block:'nearest'})}
