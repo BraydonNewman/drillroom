@@ -494,10 +494,21 @@ function calc(src){const s=String(src).replace(/\s+/g,'').replace(/\*\*/g,'^');l
 const CALC={name:'calc',description:'Evaluate an arithmetic expression exactly. Supports numbers, + - * / ^ and parentheses. Use it for every number in the drill.',
  inputSchema:{type:'object',properties:{expr:{type:'string'}},required:['expr']},execute:inp=>({result:Math.round(calc(inp&&inp.expr)*1e6)/1e6})};
 function aiFail(e){if(e&&e.code==='not_granted'){S.ai='blocked';renderAI()}}
+function fixJSON(t){t=String(t||'').replace(/```(?:json)?/gi,'');const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a<0||b<a)return null;t=t.slice(a,b+1);
+ try{return JSON.parse(t)}catch(e){}
+ // repair: escape stray quotes and raw newlines inside strings, drop trailing commas
+ let o='',ins=false;for(let i=0;i<t.length;i++){const c=t[i];
+  if(ins){if(c==='\\'){o+=c+(t[i+1]||'');i++;continue}
+   if(c==='"'){let j=i+1;while(j<t.length&&/\s/.test(t[j]))j++;const n=t[j];if(n===undefined||n===','||n===':'||n==='}'||n===']'){ins=false;o+=c}else o+='\\"';continue}
+   if(c==='\n'){o+='\\n';continue}if(c==='\r'||c==='\t'){o+=' ';continue}o+=c}
+  else{if(c==='"')ins=true;o+=c}}
+ o=o.replace(/,\s*([}\]])/g,'$1');try{return JSON.parse(o)}catch(e){return null}}
 async function askJSON(input,opts){
  if(MAN){if(MAN.mode==='cap'){MAN.ps.push(input);return{}}const k=String(input).startsWith(EXTRACT)?'extract':'grade';return MAN.ans[k]||{}}
- try{if(typeof S.sample.json==='function'){try{return await S.sample.json(input,opts)}catch(e){if(e&&(e.name==='AbortError'||(e.code&&e.code!=='invalid_json'&&e.code!=='parse_error')))throw e}}
-  const r=await S.sample(input,opts);const t=r.text||'';const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a<0||b<a)throw{message:'Claude did not return valid JSON. Try again.'};S.ai='ready';renderAI();return JSON.parse(t.slice(a,b+1))}
+ try{const r=await S.sample(input,opts);S.ai='ready';renderAI();let v=fixJSON(r.text);if(v)return v;
+  const o=Object.assign({},opts);delete o.tools;delete o.onText;
+  const r2=await S.sample('The text below was meant to be one valid JSON object but it has syntax errors'+(r.truncated?' and was cut off; close every open string, array and object so it is complete':'')+'. Return ONLY the corrected JSON, with the same content: escape any double quotes inside strings, no comments, no trailing commas.\n\n'+String(r.text||'').slice(0,60000),Object.assign(o,{modelTier:'default',cache:false}));
+  v=fixJSON(r2.text);if(v)return v;throw{message:'Claude returned broken JSON twice. Try again.'}}
  catch(e){aiFail(e);throw e}}
 
 /* ---------- data helpers ---------- */
@@ -725,7 +736,7 @@ async function manualPrompt(d,a,p){MAN={mode:'cap',ps:[]};try{await buildSub(d,a
  if(p==='r')return head+ps[0];
  const ex=ps.find(x=>String(x).startsWith(EXTRACT)),gr=ps.find(x=>!String(x).startsWith(EXTRACT));
  return head+'There are two tasks. Return {"extract": <the JSON for task 1>, "grade": <the JSON for task 2>}.\n\n=== TASK 1 ===\n'+ex+'\n\n=== TASK 2 ===\n'+gr}
-function parseReply(t){t=String(t||'');const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a<0||b<a)return null;try{return JSON.parse(t.slice(a,b+1))}catch(e){return null}}
+function parseReply(t){return fixJSON(t)}
 async function openGM(id,p,a){const d=drill(id);if(!d)return;S.gm={id,p,a,prompt:await manualPrompt(d,a,p)};
  let el=$('#gm');if(!el){el=document.createElement('div');el.id='gm';document.body.appendChild(el)}
  el.innerHTML=`<div class="gmbox" role="dialog" aria-modal="true" aria-labelledby="gmh"><h2 id="gmh">Grade with your Claude</h2>
