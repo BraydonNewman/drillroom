@@ -347,6 +347,12 @@ pre,.scroll{overflow-x:auto}
 .d3s li.on{color:var(--ink)}.d3s li.on i{background:var(--ok);border-color:var(--ok);color:#fff}
 .d3s .d3m{display:none}
 @media(max-width:760px){.d3s{padding:5px 10px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap}.d3s .d3t,.d3s ul{display:none}.d3s .d3m{display:inline}}
+
+#gm{position:fixed;inset:0;z-index:80;background:rgba(10,15,40,.55);display:grid;place-items:center;padding:16px}#gm[hidden]{display:none}
+#gm .gmbox{background:var(--bg,#fff);color:var(--ink);border-radius:16px;max-width:560px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);max-height:92vh;overflow:auto}
+#gm h2{margin:0 0 6px}#gm .gmsteps{padding-left:0;list-style:none;display:grid;gap:12px;margin:14px 0}
+#gm textarea{width:100%;margin-top:6px;font:inherit;font-size:13px;padding:8px;border:1px solid var(--line);border-radius:10px;background:transparent;color:inherit}
+#gm .row{display:flex;flex-wrap:wrap;gap:8px}
 </style><script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script></head>
 <body>
 <div class="shell">
@@ -481,6 +487,7 @@ const CALC={name:'calc',description:'Evaluate an arithmetic expression exactly. 
  inputSchema:{type:'object',properties:{expr:{type:'string'}},required:['expr']},execute:inp=>({result:Math.round(calc(inp&&inp.expr)*1e6)/1e6})};
 function aiFail(e){if(e&&e.code==='not_granted'){S.ai='blocked';renderAI()}}
 async function askJSON(input,opts){
+ if(MAN){if(MAN.mode==='cap'){MAN.ps.push(input);return{}}const k=String(input).startsWith(EXTRACT)?'extract':'grade';return MAN.ans[k]||{}}
  try{if(typeof S.sample.json==='function'){try{return await S.sample.json(input,opts)}catch(e){if(e&&(e.name==='AbortError'||(e.code&&e.code!=='invalid_json'&&e.code!=='parse_error')))throw e}}
   const r=await S.sample(input,opts);const t=r.text||'';const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a<0||b<a)throw{message:'Claude did not return valid JSON. Try again.'};S.ai='ready';renderAI();return JSON.parse(t.slice(a,b+1))}
  catch(e){aiFail(e);throw e}}
@@ -677,7 +684,7 @@ function progress(d,a,p){let n=0,t=0;if(p==='q'){a.vm.forEach(x=>{t++;if(x!=null
 function trySubmit(){const d=drill(S.cur);if(!d||S.grading)return;const[n,t]=progress(d,S.draft,S.tab);if(n<t&&!S.armed){S.armed=true;updateBar();return}submit(S.cur,S.tab)}
 async function buildSub(d,a,p){const lmOn=!a.skipLong&&d.longMath.kpis.length>0;let sub;
  {if(p==='q'){let ex=null,fb=null,err='';
-   if(S.sample){const r=await Promise.allSettled([extract(d,a,lmOn),gradeQ(d,a,lmOn)]);if(r.some(x=>x.status==='rejected'&&x.reason&&x.reason.code==='rate_limited'))throw{code:'rate_limited'};
+   if(S.sample||MAN){const r=await Promise.allSettled([extract(d,a,lmOn),gradeQ(d,a,lmOn)]);if(r.some(x=>x.status==='rejected'&&x.reason&&x.reason.code==='rate_limited'))throw{code:'rate_limited'};
     ex=r[0].status==='fulfilled'?r[0].value:null;fb=r[1].status==='fulfilled'?r[1].value:null;if(!ex)err='Your math numbers could not be read, so KPIs were not checked. ';if(!fb)err+='Interpretation was not scored.'}
    else err='KPIs and interpretation need Claude to read your paragraphs; only verbal math was scored.';
    const mk=marks(d,a,ex,lmOn),objT=d.verbal.length+(ex?mk.kt:0),objC=mk.vc+(ex?mk.kc:0),im=10+(lmOn?10:0),is=fb?fb.sm.score+fb.lm.score:0,op=objT?objC/objT:0;
@@ -687,11 +694,13 @@ async function buildSub(d,a,p){const lmOn=!a.skipLong&&d.longMath.kpis.length>0;
    sub={part:'r',total:Math.round(100*s/m),feedback:fb,sec:{rec:[s,m]},answers:{bs:a.bs,pitch:a.pitch}}}}
  return sub}
 async function submit(id,p){const d=drill(id),a=clone(S.draft);if(!d)return;
- if(!S.sample){queueGrade(id,p,a);return}
+ if(!S.sample){openGM(id,p,a);return}
  S.grading=id+p;updateBar();const before=S.uid?stats(S.uid).got.slice():[];
  const start=a[p+'Start'],date=dailyDate(id);let sub;
  try{sub=await buildSub(d,a,p)}
  catch(e){S.grading=null;updateBar();flash(e&&e.code==='rate_limited'?'Claude is rate-limited right now. Wait a minute, then submit again.':e&&e.code==='not_granted'?'Claude access is off for this page. Use "Allow Claude" in the sidebar, then submit again.':'Scoring failed. Try again in a moment.');return}
+ await storeSub(id,p,a,sub,before)}
+async function storeSub(id,p,a,sub,before){before=before||(S.uid?stats(S.uid).got.slice():[]);const start=a[p+'Start'],date=dailyDate(id);
  Object.assign(sub,{v:3,drillId:id,uid:S.uid||'',date:date||'',daily:!!date,secs:start?Math.round((Date.now()-start)/1000):0,at:new Date().toISOString()});
  const k=subKey(id,S.uid,p);S.subs[k]=Object.assign({local:true},sub);S.grading=null;S.armed=false;S.cache.clear();
  if(S.db&&S.uid){try{await S.db.doc('subs/'+k).set(sub)}catch(e){flash(e&&e.code==='quota_exceeded'?'The team store is full; ask the owner to clear old drills.':'Your score is shown here but could not be saved to the team board. Ask the page owner to invite your email as an Editor in the share menu.')}}
@@ -699,6 +708,35 @@ async function submit(id,p){const d=drill(id),a=clone(S.draft);if(!d)return;
  if(fresh.length)flash('Milestone unlocked: '+fresh.map(m=>m.name+' (reward: '+rewardLabel(m.reward)+')').join(', ')+'. Customize your look in your profile.','',true);
  route(true);const el=document.getElementById('tabs');if(el)el.scrollIntoView()}
 
+
+
+/* ---------- grade with your own Claude (copy prompt, paste reply) ---------- */
+let MAN=null;
+async function manualPrompt(d,a,p){MAN={mode:'cap',ps:[]};try{await buildSub(d,a,p)}catch(e){}const ps=MAN.ps;MAN=null;
+ const head='You are grading a JDCW case-competition practice drill. Follow the instructions exactly and reply with ONLY one JSON object in a single code block, nothing else.\n\n';
+ if(p==='r')return head+ps[0];
+ const ex=ps.find(x=>String(x).startsWith(EXTRACT)),gr=ps.find(x=>!String(x).startsWith(EXTRACT));
+ return head+'There are two tasks. Return {"extract": <the JSON for task 1>, "grade": <the JSON for task 2>}.\n\n=== TASK 1 ===\n'+ex+'\n\n=== TASK 2 ===\n'+gr}
+function parseReply(t){t=String(t||'');const a=t.indexOf('{'),b=t.lastIndexOf('}');if(a<0||b<a)return null;try{return JSON.parse(t.slice(a,b+1))}catch(e){return null}}
+async function openGM(id,p,a){const d=drill(id);if(!d)return;S.gm={id,p,a,prompt:await manualPrompt(d,a,p)};
+ let el=$('#gm');if(!el){el=document.createElement('div');el.id='gm';document.body.appendChild(el)}
+ el.innerHTML=`<div class="gmbox" role="dialog" aria-modal="true" aria-labelledby="gmh"><h2 id="gmh">Grade with your Claude</h2>
+ <p class="small">This account can't run Claude inside the page, so grade it in your own Claude chat. It takes about 30 seconds and uses your account.</p>
+ <ol class="gmsteps"><li><button class="btn" data-act="gmcopy">1. Copy the grading prompt</button></li>
+ <li><a class="btn ghost" href="https://claude.ai/new" target="_blank" rel="noopener">2. Open a new Claude chat</a> and paste it in</li>
+ <li>3. Copy Claude's whole reply and paste it here:<textarea id="gmreply" rows="5" placeholder="Paste Claude's reply (the JSON) here"></textarea></li></ol>
+ <textarea id="gmprompt" rows="3" readonly hidden aria-label="Grading prompt"></textarea>
+ <p class="err small" id="gmerr" hidden></p>
+ <div class="row"><button class="btn" data-act="gmapply">Submit my score</button><button class="btn ghost" data-act="gmqueue">Let a teammate's Claude grade it</button><button class="btn ghost" data-act="gmclose">Cancel</button></div></div>`;
+ el.hidden=false;const b=el.querySelector('[data-act=gmcopy]');if(b)b.focus()}
+function closeGM(){const el=$('#gm');if(el)el.hidden=true;S.gm=null}
+async function gmCopy(btn){const g=S.gm;if(!g)return;try{await navigator.clipboard.writeText(g.prompt);btn.textContent='Copied ✓ Now paste it into Claude'}catch(e){const t=$('#gmprompt');t.hidden=false;t.value=g.prompt;t.focus();t.select();btn.textContent='Select all in the box below and copy'}}
+async function gmApply(){const g=S.gm;if(!g)return;const err=$('#gmerr'),r=parseReply($('#gmreply').value);const bad=m=>{err.hidden=false;err.textContent=m};
+ if(!r)return bad('That doesn\'t look like Claude\'s JSON reply. Paste the whole reply, including the { and }.');
+ if(g.p==='q'&&!(r.extract||r.grade))return bad('The reply is missing "extract" and "grade". Paste the full reply.');
+ if(g.p==='r'&&!(r.brainstorm||r.pitch))return bad('The reply is missing the brainstorm scores. Paste the full reply.');
+ const d=drill(g.id);MAN={mode:'ans',ans:g.p==='q'?{extract:r.extract||{},grade:r.grade||{}}:{grade:r}};let sub;try{sub=await buildSub(d,g.a,g.p)}catch(e){MAN=null;return bad('Could not read the scores. Try pasting again.')}MAN=null;
+ sub.selfGraded=true;closeGM();await storeSub(g.id,g.p,g.a,sub)}
 
 /* ---------- teammate grading: people without Claude access queue, anyone with Claude grades ---------- */
 const pendKey=(id,uid,p)=>subKey(id,uid,p);
@@ -761,7 +799,7 @@ async function copyClaude(btn){const t=claudePrompt(S.cur,S.tab);try{await navig
 async function connectAI(){if(!S.sample){flash('Open this page signed in on claude.ai to use your Claude here.');return}S.ai='checking';renderAI();
  try{await S.sample('Reply with the single word OK.',{modelTier:'quick',cache:false});S.ai='ready';flash('Claude is connected. Drills, scoring and the coach now run on your Claude.','',true);autoGen()}catch(e){S.ai=e&&e.code==='not_granted'?'blocked':'ready';if(S.ai==='blocked')flash('Claude access was declined for this page. Try again and choose Allow when asked.')}renderAI()}
 function renderAI(){const el=$('#aichip');const st=!S.sample?'off':S.ai;el.className='aichip '+(st==='ready'?'ready':st==='checking'?'':'off');
- el.innerHTML=st==='off'?'<i></i><span>No Claude access here: teammates grade for you</span>':st==='blocked'?'<i></i><span>Claude not allowed</span><button data-act="connect">Allow Claude</button>':st==='checking'?'<i></i><span>AI: your Claude</span><button data-act="connect">Connect</button>':'<i></i><span>AI runs on your Claude</span>'}
+ el.innerHTML=st==='off'?'<i></i><span>Grading via your Claude chat</span>':st==='blocked'?'<i></i><span>Claude not allowed</span><button data-act="connect">Allow Claude</button>':st==='checking'?'<i></i><span>AI: your Claude</span><button data-act="connect">Connect</button>':'<i></i><span>AI runs on your Claude</span>'}
 async function saveMember(){const f=$('#joinform');if(!f)return;const v=n=>{const e=f.elements[n];return e?String(e.value||'').trim():''};const name=v('name'),email=v('email'),role=v('role');
  if(!name){S.joinErr='Add your name.';renderJoinErr();return}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){S.joinErr='Add a valid email.';renderJoinErr();return}
  if(!S.db||!S.uid){S.joinErr='Open this page signed in on claude.ai to register.';renderJoinErr();return}
@@ -1043,6 +1081,7 @@ document.addEventListener('click',e=>{if(e.target.id==='lb'){closeLB();return}co
  else if(a==='shuffle'){S.wall=S.wall.map(x=>({p:x.p,r:Math.round(Math.random()*12-6),k:Math.random()})).sort((x,y)=>x.k-y.k);app.innerHTML=viewTeam()}
  else if(a==='cmix'){startMix('c');if(location.hash!=='#cmix')location.hash='cmix';else app.innerHTML=viewCards('mix');scrollTo(0,0)}
  else if(a==='fmix'){startMix('f');if(location.hash!=='#fmix')location.hash='fmix';else app.innerHTML=viewFit('fmix');scrollTo(0,0)}
+ else if(a==='gmcopy')gmCopy(b);else if(a==='gmapply')gmApply();else if(a==='gmclose')closeGM();else if(a==='gmqueue'){const g=S.gm;closeGM();if(g)queueGrade(g.id,g.p,g.a)}
  else if(a==='cans'){answerCard(cv().date||today(),+b.dataset.i,+b.dataset.j,+b.dataset.s)}
  else if(a==='cstage'){const d=cv().date||today(),k=d+':'+b.dataset.i+(S.prac[d]?':p':'');S.stage[k]=+b.dataset.s;S.justFlipped=k;app.innerHTML=viewCards(d);const el=$('.fdots');if(el)el.scrollIntoView({block:'nearest'})}
  else if(a==='cnext'||a==='cgo'){const d=cv().date||today(),cards=deckOf(d)||[],s=cSrc(d);S.showRev=false;if(a==='cgo')S.cIdx[d]=+b.dataset.i;else{const cur=S.cIdx[d]||0;let nx=cards.findIndex((x,k)=>k>cur&&!doneIn(x,k,s));if(nx<0)nx=cards.findIndex((x,k)=>!doneIn(x,k,s));S.cIdx[d]=nx<0?cards.length:nx}app.innerHTML=viewCards(d);const el=$('.fdots');if(el)el.scrollIntoView({block:'nearest'})}
