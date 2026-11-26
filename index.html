@@ -422,7 +422,7 @@ const MS=[
  {id:'streak14',name:'Unstoppable',desc:'Reach a 14-day streak.',goal:14,val:s=>s.bestStreak,icon:'star',reward:['color','midnight']}];
 const rewardLabel=r=>r[0]==='icon'?(r[1]==='check3'?'Checklist':r[1][0].toUpperCase()+r[1].slice(1))+' icon':r[0]==='color'?({gold:'Gold',midnight:'Midnight',sunset:'Sunset'}[r[1]]||r[1])+' colour':FRAMES[r[1]]+' frame';
 
-const S={db:null,user:null,uid:null,sample:null,ai:'checking',canWrite:true,drills:{},days:{},subs:{},members:{},loaded:false,cur:null,draft:null,touched:false,grading:null,armed:false,
+const S={pend:{},db:null,user:null,uid:null,sample:null,ai:'checking',canWrite:true,drills:{},days:{},subs:{},members:{},loaded:false,cur:null,draft:null,touched:false,grading:null,armed:false,
  tab:'r',wall:null,lb:-1,decks:{},csubs:{},localCS:{},cIdx:{},cAuto:false,flipped:{},justFlipped:'',stage:{},prac:{},fits:{},fsubs:{},localFS:{},fIdx:{},fAuto:false,fgen:{busy:false,err:'',other:false},fbusy:false,ferr:'',world:null,cgen:{busy:false,err:'',other:false},showRev:false,
  cal:{y:new Date().getFullYear(),m:new Date().getMonth()},gen:{busy:false,auto:false,prompt:'',industry:'',module:'',depth:'std',err:'',status:'',ctl:null},joinErr:'',prefill:{name:'',email:''},lock:null,autoTried:false,cache:new Map()};
 const app=$('#app'),note=$('#note');
@@ -675,11 +675,8 @@ async function gradeR(d,a){const data={overview:d.overview,goals:d.goals,task:d.
   pitch:{score:has(a.pitch)?cl(r.pitch&&r.pitch.score,20):0,feedback:str_(r.pitch&&r.pitch.feedback),better:str_(r.pitch&&r.pitch.better)},overall:ov(r)}}
 function progress(d,a,p){let n=0,t=0;if(p==='q'){a.vm.forEach(x=>{t++;if(x!=null)n++});t++;if(a.sm.trim())n++;if(!a.skipLong&&d.longMath.kpis.length){t++;if(a.lm.trim())n++}}else{a.bs.forEach(x=>{t++;if(String(x).trim())n++});t++;if(a.pitch.trim())n++}return[n,t]}
 function trySubmit(){const d=drill(S.cur);if(!d||S.grading)return;const[n,t]=progress(d,S.draft,S.tab);if(n<t&&!S.armed){S.armed=true;updateBar();return}submit(S.cur,S.tab)}
-async function submit(id,p){const d=drill(id),a=clone(S.draft);if(!d)return;
- if(p==='r'&&!S.sample){flash('Brainstorm + Rec is scored by Claude. Open this page signed in on claude.ai and allow Claude when asked.');return}
- S.grading=id+p;updateBar();const before=S.uid?stats(S.uid).got.slice():[];
- const lmOn=!a.skipLong&&d.longMath.kpis.length>0,start=a[p+'Start'],date=dailyDate(id);let sub;
- try{if(p==='q'){let ex=null,fb=null,err='';
+async function buildSub(d,a,p){const lmOn=!a.skipLong&&d.longMath.kpis.length>0;let sub;
+ {if(p==='q'){let ex=null,fb=null,err='';
    if(S.sample){const r=await Promise.allSettled([extract(d,a,lmOn),gradeQ(d,a,lmOn)]);if(r.some(x=>x.status==='rejected'&&x.reason&&x.reason.code==='rate_limited'))throw{code:'rate_limited'};
     ex=r[0].status==='fulfilled'?r[0].value:null;fb=r[1].status==='fulfilled'?r[1].value:null;if(!ex)err='Your math numbers could not be read, so KPIs were not checked. ';if(!fb)err+='Interpretation was not scored.'}
    else err='KPIs and interpretation need Claude to read your paragraphs; only verbal math was scored.';
@@ -688,6 +685,12 @@ async function submit(id,p){const d=drill(id),a=clone(S.draft);if(!d)return;
     answers:{vm:a.vm,sm:a.sm,lm:lmOn?a.lm:'',skipLong:!lmOn}}}
   else{const fb=await gradeR(d,a),s=fb.brainstorm.reduce((x,b)=>x+b.score,0)+fb.pitch.score,m=10*d.brainstorm.length+20;
    sub={part:'r',total:Math.round(100*s/m),feedback:fb,sec:{rec:[s,m]},answers:{bs:a.bs,pitch:a.pitch}}}}
+ return sub}
+async function submit(id,p){const d=drill(id),a=clone(S.draft);if(!d)return;
+ if(!S.sample){queueGrade(id,p,a);return}
+ S.grading=id+p;updateBar();const before=S.uid?stats(S.uid).got.slice():[];
+ const start=a[p+'Start'],date=dailyDate(id);let sub;
+ try{sub=await buildSub(d,a,p)}
  catch(e){S.grading=null;updateBar();flash(e&&e.code==='rate_limited'?'Claude is rate-limited right now. Wait a minute, then submit again.':e&&e.code==='not_granted'?'Claude access is off for this page. Use "Allow Claude" in the sidebar, then submit again.':'Scoring failed. Try again in a moment.');return}
  Object.assign(sub,{v:3,drillId:id,uid:S.uid||'',date:date||'',daily:!!date,secs:start?Math.round((Date.now()-start)/1000):0,at:new Date().toISOString()});
  const k=subKey(id,S.uid,p);S.subs[k]=Object.assign({local:true},sub);S.grading=null;S.armed=false;S.cache.clear();
@@ -695,6 +698,25 @@ async function submit(id,p){const d=drill(id),a=clone(S.draft);if(!d)return;
  const after=S.uid?stats(S.uid).got:[],fresh=MS.filter(m=>after.includes(m.id)&&!before.includes(m.id));
  if(fresh.length)flash('Milestone unlocked: '+fresh.map(m=>m.name+' (reward: '+rewardLabel(m.reward)+')').join(', ')+'. Customize your look in your profile.','',true);
  route(true);const el=document.getElementById('tabs');if(el)el.scrollIntoView()}
+
+
+/* ---------- teammate grading: people without Claude access queue, anyone with Claude grades ---------- */
+const pendKey=(id,uid,p)=>subKey(id,uid,p);
+const myPend=(id,p)=>{const x=S.pend[pendKey(id,S.uid,p)];return x&&!x.done?x:null};
+async function queueGrade(id,p,a){if(!S.db||!S.uid){flash('Register first so your answers can be saved for grading.');return}
+ const job={id,p,uid:S.uid,answers:a,date:dailyDate(id)||'',start:a[p+'Start']||0,at:new Date().toISOString(),done:false};
+ S.pend[pendKey(id,S.uid,p)]=job;updateBar();
+ try{await S.db.doc('pending/'+pendKey(id,S.uid,p)).set(job);flash('Submitted. Your account can\'t run Claude here, so a teammate\'s Claude will grade it automatically the next time someone with Claude has Drill Room open. Your score appears on the board then.','',true)}
+ catch(e){delete S.pend[pendKey(id,S.uid,p)];updateBar();flash('Could not save your answers. Check your connection and try again.')}}
+let gradingQ=false;
+async function processPending(){if(gradingQ||!S.sample||!S.db||!S.uid||!S.loaded||S.ai==='blocked')return;
+ const job=Object.entries(S.pend).find(([k,j])=>j&&!j.done&&j.uid&&drill(j.id)&&!getSub(j.id,j.uid,j.p));if(!job)return;
+ const[k,j]=job;gradingQ=true;
+ try{const l=await S.db.doc('locks/grade-'+k).acquire({holder:S.uid,ttlMs:180000});if(!l.acquired){gradingQ=false;return}
+  const d=drill(j.id),a=merge(blank(d),j.answers||{});const sub=await buildSub(d,a,j.p);
+  Object.assign(sub,{v:3,drillId:j.id,uid:j.uid,date:j.date||'',daily:!!j.date,secs:j.start?Math.max(0,Math.round((Date.parse(j.at)-j.start)/1000)):0,at:j.at,gradedBy:S.uid});
+  await S.db.doc('subs/'+k).set(sub);await S.db.doc('pending/'+k).set(Object.assign({},j,{done:true,gradedBy:S.uid}))}
+ catch(e){}gradingQ=false;setTimeout(processPending,1500)}
 
 /* ---------- generator ---------- */
 async function claimToday(id){const t=today();if(S.days[t]||!S.db)return;const ref=S.db.doc('days/'+t);
@@ -739,7 +761,7 @@ async function copyClaude(btn){const t=claudePrompt(S.cur,S.tab);try{await navig
 async function connectAI(){if(!S.sample){flash('Open this page signed in on claude.ai to use your Claude here.');return}S.ai='checking';renderAI();
  try{await S.sample('Reply with the single word OK.',{modelTier:'quick',cache:false});S.ai='ready';flash('Claude is connected. Drills, scoring and the coach now run on your Claude.','',true);autoGen()}catch(e){S.ai=e&&e.code==='not_granted'?'blocked':'ready';if(S.ai==='blocked')flash('Claude access was declined for this page. Try again and choose Allow when asked.')}renderAI()}
 function renderAI(){const el=$('#aichip');const st=!S.sample?'off':S.ai;el.className='aichip '+(st==='ready'?'ready':st==='checking'?'':'off');
- el.innerHTML=st==='off'?'<i></i><span>AI off: open on claude.ai</span>':st==='blocked'?'<i></i><span>Claude not allowed</span><button data-act="connect">Allow Claude</button>':st==='checking'?'<i></i><span>AI: your Claude</span><button data-act="connect">Connect</button>':'<i></i><span>AI runs on your Claude</span>'}
+ el.innerHTML=st==='off'?'<i></i><span>No Claude access here: teammates grade for you</span>':st==='blocked'?'<i></i><span>Claude not allowed</span><button data-act="connect">Allow Claude</button>':st==='checking'?'<i></i><span>AI: your Claude</span><button data-act="connect">Connect</button>':'<i></i><span>AI runs on your Claude</span>'}
 async function saveMember(){const f=$('#joinform');if(!f)return;const v=n=>{const e=f.elements[n];return e?String(e.value||'').trim():''};const name=v('name'),email=v('email'),role=v('role');
  if(!name){S.joinErr='Add your name.';renderJoinErr();return}if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){S.joinErr='Add a valid email.';renderJoinErr();return}
  if(!S.db||!S.uid){S.joinErr='Open this page signed in on claude.ai to register.';renderJoinErr();return}
@@ -830,7 +852,7 @@ function secCoach(id){return `<section class="sec" id="s-coach"><h2>Ask the coac
 function bar(){return `<div class="bar"><div class="wrap"><div class="grow"><span id="prog"></span><span id="clock" class="muted"></span></div><button class="btn" id="submit" data-act="submit">Submit ${S.tab==='q'?'Quant':'Recs'}</button></div></div>`}
 function updateBar(){const p=$('#prog'),b=$('#submit');const d=S.cur&&drill(S.cur);if(d&&S.draft)['q','r'].forEach(x=>{const e=$('#tabst-'+x);if(e&&!mySub(S.cur,x)){const[n,t]=progress(d,S.draft,x);if(n)e.textContent=n+'/'+t+' answered'}});
  if(!p||!S.draft||!d)return;const[n,t]=progress(d,S.draft,S.tab);p.innerHTML=`<b>${n}/${t}</b>&nbsp;answered`;
- if(S.grading){b.disabled=true;b.textContent='Scoring… your Claude is reading';b.className='btn'}else{b.disabled=false;b.textContent=S.armed?'Submit anyway? '+(t-n)+' left':'Submit '+(S.tab==='q'?'Quant':'Recs');b.className=S.armed?'btn warn':'btn'}}
+ if(S.grading){b.disabled=true;b.textContent='Scoring… your Claude is reading';b.className='btn'}else if(myPend(S.cur,S.tab)){b.disabled=true;b.textContent='Submitted · waiting for a teammate\'s Claude to grade';b.className='btn'}else{b.disabled=false;b.textContent=S.armed?'Submit anyway? '+(t-n)+' left':'Submit '+(S.tab==='q'?'Quant':'Recs');b.className=S.armed?'btn warn':'btn'}}
 function viewDrill(id){const d=drill(id);if(!d)return S.loaded?`<section class="band"><div class="wrap"><h1>Drill not found</h1><p class="lede">It may have been removed. <a href="#archive">Browse the archive</a>.</p></div></section>`:loading();
  const p=S.tab,m=mySub(id,p),done=!!m;ensureDraft(id,d);const a=done?merge(blank(d),m.answers):S.draft,f=done?m.feedback:null,ex=done?m.extract:null;
  const lmOn=done?!!m.lmOn:!a.skipLong,mk=done&&p==='q'?marks(d,a,ex,lmOn):{sm:[],lm:[]};const bothDone=mySub(id,'q')&&mySub(id,'r');
@@ -1053,6 +1075,7 @@ route(true);
  const snap=(path,key,build)=>S.db.collection(path).limit(1000).onSnapshot(q=>{build(q.docs);ready(key)},fail);
  snap('drills','d',docs=>{const nx={};docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.drills))if(!nx[k]&&v)nx[k]=v;S.drills=nx});
  snap('days','y',docs=>{const nx={};docs.forEach(x=>{nx[x.id]=x.data()});const had=!!S.days[today()];S.days=nx;if(!had&&nx[today()]&&!S.gen.busy&&cv().v==='today')viewKey=''});
+ S.db.collection('pending').limit(500).onSnapshot(q=>{const nx={};q.docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.pend))if(v&&!nx[k])nx[k]=v;S.pend=nx;updateBar();setTimeout(processPending,800)},()=>{});
  snap('subs','s',docs=>{const nx={};docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.subs))if(v&&v.local&&!nx[k])nx[k]=v;S.subs=nx});
  S.db.collection('decks').limit(400).onSnapshot(q=>{const nx={};q.docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.decks))if(!nx[k]&&v)nx[k]=v;S.decks=nx;S.cache.clear();if(S.loaded)route()},()=>{});
  S.db.collection('cardsubs').limit(1000).onSnapshot(q=>{const nx={};q.docs.forEach(x=>{nx[x.id]=x.data()});for(const[k,v]of Object.entries(S.localCS)){const kk=csKey(k,S.uid);if(!nx[kk]||((nx[kk].answers||[]).filter(a=>a!=null).length<(v.answers||[]).filter(a=>a!=null).length))nx[kk]=v}S.csubs=nx;S.cache.clear();if(S.loaded)route()},()=>{});
